@@ -12,9 +12,10 @@ import os
 import sys
 import csv
 import gzip
-import json
 import time
 import subprocess
+import urllib.error
+import xml.etree.ElementTree as ET
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
@@ -46,16 +47,58 @@ def load_links():
     return links
 
 
+def parse_xml(service, raw):
+    """서울 API의 XML 응답을 {서비스명: {"list_total_count": N, "row": [...]}} 형태로 바꾼다.
+    오류 응답처럼 서비스 블록이 없으면 {"RESULT": {...}} 를 돌려준다.
+    행의 컬럼명은 문서(출력명)와 맞추기 위해 대문자로 통일한다."""
+    root = ET.fromstring(raw)
+
+    def result_of(node):
+        res = node if node.tag == "RESULT" else node.find("RESULT")
+        if res is None:
+            return {}
+        return {c.tag: (c.text or "").strip() for c in res}
+
+    if root.tag != service:
+        return {"RESULT": result_of(root)}
+
+    rows = [
+        {c.tag.upper(): (c.text or "").strip() for c in row}
+        for row in root.findall("row")
+    ]
+    result = result_of(root)
+    code = result.get("CODE", "")
+    if not rows and code and code != "INFO-000":
+        print(f"[{service}] 응답: {result}", flush=True)
+    total = int(root.findtext("list_total_count") or 0)
+    return {service: {"list_total_count": total, "row": rows, "RESULT": result}}
+
+
 def fetch(service, start, end, extra=""):
     """extra: URL 맨 끝에 붙는 추가 인자 (소통 정보의 LINK_ID)"""
-    url = f"{BASE}/{KEY}/json/{service}/{start}/{end}/{extra}"
+    url = f"{BASE}/{KEY}/xml/{service}/{start}/{end}/{extra}"
     for attempt in range(3):
+        status, raw = None, b""
         try:
             with urllib.request.urlopen(url, timeout=30) as r:
-                return json.loads(r.read().decode("utf-8"))
+                status = r.status
+                raw = r.read()
+            return parse_xml(service, raw)
         except Exception as e:
+            if isinstance(e, urllib.error.HTTPError):
+                status = e.code
+                try:
+                    raw = e.read()
+                except Exception:
+                    pass
             msg = str(e).replace(KEY, "***")
-            print(f"[{service} {extra}] 시도 {attempt + 1} 실패: {msg}", flush=True)
+            preview = raw[:200].decode("utf-8", errors="replace").replace(KEY, "***")
+            preview = preview.replace("\n", " ")
+            print(
+                f"[{service} {extra}] 시도 {attempt + 1} 실패: {msg} "
+                f"| HTTP {status} | 응답 {len(raw)}바이트 | 미리보기: {preview!r}",
+                flush=True,
+            )
             time.sleep(3)
     return None
 

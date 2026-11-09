@@ -1,0 +1,46 @@
+name: collect-seoul-data
+
+on:
+  schedule:
+    - cron: "0 * * * *"      # 매시 정각(UTC 기준이지만 1시간 간격이라 KST도 정각)
+  workflow_dispatch:         # 수동 실행 버튼 (테스트용)
+
+# 1) 이전 실행이 끝나기 전에 다음 실행이 겹치지 않도록 한 줄로 세운다
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+permissions:
+  contents: write            # 봇이 data/ 를 커밋할 수 있도록
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 58      # 2) 다음 시간 실행과 부딪히지 않게 상한 설정
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Git 사용자 설정
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: 수집 (5분 간격, 약 55분)
+        timeout-minutes: 57  # 이 스텝이 시간초과 돼도 아래 always() 스텝은 실행됨
+        run: python3 -u collect.py
+        env:
+          SEOUL_API_KEY: ${{ secrets.SEOUL_API_KEY }}
+          # 수동 실행(테스트)은 1회만 수집하고 끝낸다. 스케줄 실행은 0(제한 없음)
+          MAX_ROUNDS: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+
+      # 3) 앞 단계가 실패/취소돼도 지금까지 모은 데이터를 저장
+      - name: 최종 커밋
+        if: always()
+        run: |
+          git add data
+          git diff --cached --quiet && exit 0
+          git commit -m "data(final): $(TZ=Asia/Seoul date '+%Y-%m-%d %H:%M')"
+          for i in 1 2 3; do
+            git pull --rebase --autostash && git push && break
+            sleep 5
+          done

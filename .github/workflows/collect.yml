@@ -1,8 +1,8 @@
 name: collect-seoul-data
 
 on:
-  schedule:
-    - cron: "0 * * * *"      # 매시 정각(UTC 기준이지만 1시간 간격이라 KST도 정각)
+  #schedule:
+  #  - cron: "0 * * * *"      # 매시 정각(UTC 기준이지만 1시간 간격이라 KST도 정각)
   workflow_dispatch:         # 수동 실행 버튼 (테스트용)
 
 # 1) 이전 실행이 끝나기 전에 다음 실행이 겹치지 않도록 한 줄로 세운다

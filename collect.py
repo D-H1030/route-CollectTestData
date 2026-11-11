@@ -159,6 +159,7 @@ def save(name, rows, day, collected_at):
 
 
 def collect_once(links):
+    t0 = time.time()
     now = datetime.now(KST)
     collected_at = now.strftime("%Y-%m-%d %H:%M:%S")
     day = now.strftime("%Y%m%d")
@@ -178,12 +179,13 @@ def collect_once(links):
     with open(log, "a", encoding="utf-8", newline="") as f:
         w = csv.writer(f)
         if is_new:
-            w.writerow(["collected_at", "acc_count", "traffic_count", "traffic_failed_links"])
-        w.writerow([collected_at, acc_count, len(traffic_rows), failed])
+            w.writerow(["collected_at", "acc_count", "traffic_count", "traffic_failed_links", "elapsed_sec"])
+        elapsed = round(time.time() - t0, 1)
+        w.writerow([collected_at, acc_count, len(traffic_rows), failed, elapsed])
 
     print(
         f"[{collected_at}] 돌발 {acc_count}건, 소통 {len(traffic_rows)}건 "
-        f"(링크 {len(links)}개 중 실패 {failed}개)",
+        f"(링크 {len(links)}개 중 실패 {failed}개) | 소요 {elapsed}초",
         flush=True,
     )
 

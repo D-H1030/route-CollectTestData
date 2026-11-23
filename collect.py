@@ -40,7 +40,11 @@ def load_links():
     if not os.path.exists(LINKS_FILE):
         sys.exit(f"{LINKS_FILE} 파일이 없습니다. 수집할 LINK_ID를 한 줄에 하나씩 적어 주세요.")
     with open(LINKS_FILE, encoding="utf-8-sig") as f:  # BOM이 붙은 파일도 읽을 수 있게
-        links = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+        links = []
+        for line in f:
+            v = line.strip().strip('"').strip("'")  # 따옴표로 감싸진 값도 허용
+            if v and not v.startswith("#"):
+                links.append(v)
     links = list(dict.fromkeys(links))  # 중복 제거 (순서 유지)
     if not links:
         sys.exit(f"{LINKS_FILE} 에 LINK_ID가 하나도 없습니다.")
@@ -83,7 +87,12 @@ def fetch(service, start, end, extra=""):
             with urllib.request.urlopen(url, timeout=30) as r:
                 status = r.status
                 raw = r.read()
-            return parse_xml(service, raw)
+            parsed = parse_xml(service, raw)
+            res = parsed.get("RESULT") or parsed.get(service, {}).get("RESULT", {})
+            if str(res.get("CODE", "")).startswith("ERROR"):
+                # 서버 오류(ERROR-500 등)는 '데이터 없음'이 아니므로 재시도한다
+                raise RuntimeError(f"서버 오류 응답 {res.get('CODE')}")
+            return parsed
         except Exception as e:
             if isinstance(e, urllib.error.HTTPError):
                 status = e.code

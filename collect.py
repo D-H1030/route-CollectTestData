@@ -1,7 +1,8 @@
 """
 서울 열린데이터 광장에서 '실시간 돌발 상황 정보' 와 '서울시 실시간 도로 소통 정보' 를 수집한다.
 
-- 1시간마다 실행되고, 실행 한 번에 5분 간격으로 최대 12번 수집한다. (55분 동안 루프 실행)
+- 실행이 시작되면 그 시각부터 약 50분 동안 5분 간격으로 수집하고 끝난다. (약 10회)
+  워크플로는 10분마다 트리거되고, 실행 중이면 대기했다가 앞 실행이 끝나는 즉시 이어받는다.
 - 수집 시각은 '5분 경계(00, 05, 10 ...)'에 맞춰 대기하므로 간격이 밀리지 않는다. (08분에 시작 시 10분까지 대기 후 루프 시작. github actions 가 워크플로우 자체를 늦게 시작한 경우에는 수집 주기가 밀릴 수 있다. )
 - 6회(약 30분)마다 중간 커밋, 종료 시 최종 커밋.
 - 돌발 정보(AccInfo)는 전체를 받고, 소통 정보(TrafficInfo)는 LINK_ID가 필수라서 links.txt 에 적은 링크만 하나씩 호출한다.
@@ -25,7 +26,7 @@ BASE = "http://openapi.seoul.go.kr:8088"
 KST = timezone(timedelta(hours=9))
 
 INTERVAL = 300          # 수집 간격(초) = 5분
-RUN_MINUTES = 56        # 현재 시(hour) 시작 후 이 시각(분)까지만 수집 -> 마지막 수집은 :55
+RUN_MINUTES = 50        # 실행 시작 시각부터 이 시간(분) 동안만 수집한다 (마지막 수집 후 커밋까지 58분 제한에 여유를 둠)
 COMMIT_EVERY = 6        # 6회 수집(약 30분)마다 중간 커밋
 MAX_ROUNDS = int(os.environ.get("MAX_ROUNDS", "0"))  # 0이면 제한 없음, 수동 테스트 때는 1
 WORKERS = 5             # 소통 정보를 동시에 호출할 개수
@@ -234,8 +235,7 @@ def main():
     print(f"수집 대상 링크 {len(links)}개", flush=True)
 
     start = time.time()
-    hour_start = int(start // 3600) * 3600
-    deadline = hour_start + RUN_MINUTES * 60
+    deadline = start + RUN_MINUTES * 60   # 시작 시각 기준이라 늦게 시작해도 같은 시간 동안 수집한다
 
     # 시작이 지연돼 경계에서 30초 넘게 지났으면 다음 5분 경계까지 기다려 정렬한다.
     if MAX_ROUNDS == 0 and start % INTERVAL > 30:
